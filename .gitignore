@@ -1,1 +1,3 @@
 .superpowers/
+production/**/build-v2-tmp/
+*.mp3
