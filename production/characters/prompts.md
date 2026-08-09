@@ -10,22 +10,22 @@
 
 重生后加词：眼神锋利，嘴角冷笑，压迫感
 
-锁定文件：`production/characters/shen-qingning/lock.png`（选定后填入）
+锁定文件：`production/characters/shen-qingning/lock.png`（来源：`candidate-01.png`；水色薄纱、冷青金、素净克制，脸型清晰，适合后续半身复用）
 
 ## 谢临渊（男主）
 古风俊美男子，25岁，权臣气质，剑眉，深目，薄唇寡言，玄色金纹长袍，墨发束冠，身形修长，气场强，半身肖像，俯视感，冷光，高细节，古装剧质感，一致人物设计
 
-锁定文件：`production/characters/xie-linyuan/lock.png`
+锁定文件：`production/characters/xie-linyuan/lock.png`（来源：`candidate-01.png`；玄色金纹、俯视压迫感明确，五官稳定，适合男主权臣定妆）
 
 ## 沈婉儿（继妹）
 古风娇美女子，17岁，伪善甜美，圆润杏眼，笑里藏刀，粉白绣花裙，珠翠繁复，刻意妖娇，半身肖像，娇笑表情，暖粉光，古装剧质感
 
-锁定文件：`production/characters/shen-waner/lock.png`
+锁定文件：`production/characters/shen-waner/lock.png`（来源：`candidate-02.png`；粉白繁复、娇笑藏锋，与女主素净水色形成明显区分）
 
 ## 陆承晏（渣男）
 古风英俊男子，22岁，表面谦谦世子，眼神势利闪躲，月白锦袍，金玉腰带，精致却轻浮，半身肖像，假笑，宴会光，古装剧质感
 
-锁定文件：`production/characters/lu-chengyan/lock.png`
+锁定文件：`production/characters/lu-chengyan/lock.png`（来源：`candidate-01.png`；月白锦袍、金玉腰带、假笑和闪躲感成立）
 
 ## 出图规则
 1. 每角色先出 4 张候选：`candidate-01.png` … `candidate-04.png`
