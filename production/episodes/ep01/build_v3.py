@@ -65,9 +65,10 @@ SHOTS: list[dict] = [
          ]),
     dict(name="fakecry", a="s04-fakecry.png", b="s04b-fakecry.png", motion="blink", move=0.0,
          dur=6.0, flicker=0.010, framings=[
-             (0.40, 1.30, 1.35, -100, -150, 0),
-             (0.20, 1.20, 1.28, 0, 150, 0, "s03c-collapse.png"),
-             (0.40, 1.00, 1.06, 60, 0, 0),
+             (0.30, 1.30, 1.35, -100, -150, 0),
+             (0.18, 1.20, 1.26, 0, 150, 0, "s03c-collapse.png"),
+             (0.22, 1.05, 1.10, 60, 0, 0),
+             (0.30, 1.42, 1.48, -120, -180, 0),
          ]),
     dict(name="disdain", a="s05-disdain.png", b="s05b-disdain.png", motion="morph", move=0.40,
          dur=10.0, flicker=0.012, framings=[
