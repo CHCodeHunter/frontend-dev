@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""Build EP01 v3: motion-interpolated action beats + atmosphere -> vertical mp4.
+"""Build EP01 v3: motion beats cut like drama coverage -> vertical mp4.
 
-Each key beat ships two drawn poses (A and B). Motion compensation between them
-produces real in-between movement instead of a pan across one frozen image.
+Two things separate this from a slideshow. Beats carry real movement: each key
+pose ships an A and B drawing, and the travel between them is either motion
+interpolated (small moves) or hard cut (wide moves, which interpolation smears).
+And beats are covered from several framings pulled out of the same plate, cut
+hard, so the edit averages a cut every couple of seconds instead of one long
+push per image.
 """
 
 from __future__ import annotations
@@ -20,31 +24,119 @@ WORK = ROOT / "build-v3-tmp"
 FINAL = ROOT / "final"
 W, H, FPS = 1080, 1920, 30
 SRC_W, SRC_H = 1536, 1024
-XFADE = 0.3
 BLINK = 4 / 30  # a real blink is a few frames, not a slow dissolve
+
+# the plate is scaled to cover the vertical frame, leaving horizontal slack to
+# choose what the "camera" is pointed at
+BIG_W, BIG_H = int(W * 1.5), int(H * 1.5)
+# past this the plate is upscaled far enough that faces go soft
+MAX_ZOOM = 1.5
 
 FONT = "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"
 
-# Interpolation smears when two poses sit far apart, so wide moves are cut, not
-# morphed; morphs stay short so the action reads as a beat rather than a melt.
-# name, A, B, motion, move_dur, duration, zoom_end, pan_x, pan_y, shake, flicker
-SHOTS = [
-    ("candle", "s01-candle.png", None, "hold", 0.0, 4.0, 1.10, 0, 0, 0, 0.020),
-    ("drink", "s02-drink.png", "s02b-drink.png", "morph", 0.45, 5.0, 1.08, 20, 0, 0, 0.014),
-    ("collapse", "s03-collapse.png", "s03b-collapse.png", "cut", 0.0, 7.0, 1.06, 0, 30, 4, 0.012),
-    ("fakecry", "s04-fakecry.png", "s04b-fakecry.png", "blink", 0.0, 6.0, 1.12, 0, 0, 0, 0.010),
-    ("disdain", "s05-disdain.png", "s05b-disdain.png", "morph", 0.40, 8.0, 1.08, -30, 0, 0, 0.012),
-    ("shadow", "s06-shadow.png", None, "hold", 0.0, 10.0, 1.14, 0, -40, 0, 0.016),
-    ("blackeye", "s07-blackeye.png", None, "hold", 0.0, 5.0, 1.05, 0, 0, 2, 0.008),
-    ("awake", "s07-blackeye.png", "s08-awake.png", "cut", 0.0, 8.0, 1.16, 0, 0, 6, 0.010),
-    ("offer", "s09-offer.png", "s09b-offer.png", "morph", 0.45, 9.0, 1.08, 25, 0, 0, 0.012),
-    ("poison", "s10-poison.png", None, "hold", 0.0, 6.0, 1.18, 0, 0, 0, 0.014),
-    ("coldlook", "s11-coldlook.png", "s11b-coldlook.png", "morph", 0.35, 8.0, 1.10, 0, 0, 0, 0.010),
-    ("smile", "s12-smile.png", "s12b-smile.png", "morph", 0.30, 6.0, 1.12, 0, 0, 0, 0.008),
-    ("push", "s13-push.png", "s13b-push.png", "morph", 0.50, 10.0, 1.08, 0, 0, 4, 0.010),
-    ("shock", "s14-shock.png", "s14b-shock.png", "cut", 0.0, 6.0, 1.06, 0, 20, 4, 0.010),
-    ("stare", "s15-stare.png", "s15b-stare.png", "blink", 0.0, 6.0, 1.12, 0, 0, 0, 0.010),
+# framing: (share of beat, zoom start, zoom end, pan x, pan y, shake)
+# pan values are in output pixels; positive x looks right, positive y looks down
+SHOTS: list[dict] = [
+    dict(name="candle", a="s01-candle.png", b=None, motion="hold", move=0.0,
+         dur=4.0, flicker=0.020, framings=[
+             (0.55, 1.00, 1.06, -150, 0, 0),
+             (0.45, 1.50, 1.60, -300, -200, 0),
+         ]),
+    dict(name="drink", a="s02-drink.png", b="s02b-drink.png", motion="morph", move=0.45,
+         dur=5.0, flicker=0.014, framings=[
+             (0.30, 1.00, 1.05, 100, 0, 0),
+             (0.32, 1.35, 1.45, 250, -250, 0),
+             (0.38, 1.15, 1.25, 200, -150, 0),
+         ]),
+    dict(name="collapse", a="s03-collapse.png", b="s03b-collapse.png", motion="cut", move=0.0,
+         dur=7.0, flicker=0.012, framings=[
+             (0.42, 1.00, 1.06, -200, 0, 0),
+             (0.28, 1.50, 1.55, -320, -250, 5),
+             (0.30, 1.15, 1.25, -150, 200, 3),
+         ]),
+    dict(name="fakecry", a="s04-fakecry.png", b="s04b-fakecry.png", motion="blink", move=0.0,
+         dur=6.0, flicker=0.010, framings=[
+             (0.45, 1.30, 1.35, -100, -150, 0),
+             (0.25, 1.00, 1.05, 0, 0, 0),
+             (0.30, 1.50, 1.60, -80, -200, 0),
+         ]),
+    dict(name="disdain", a="s05-disdain.png", b="s05b-disdain.png", motion="morph", move=0.40,
+         dur=8.0, flicker=0.012, framings=[
+             (0.36, 1.00, 1.06, 0, 0, 0),
+             (0.20, 1.35, 1.40, -100, -250, 0),
+             (0.44, 1.10, 1.20, -200, 0, 0),
+         ]),
+    dict(name="shadow", a="s06-shadow.png", b=None, motion="hold", move=0.0,
+         dur=10.0, flicker=0.016, framings=[
+             (0.35, 1.00, 1.08, 0, 0, 0),
+             (0.30, 1.40, 1.50, 150, -200, 0),
+             (0.35, 1.10, 1.25, -100, 150, 0),
+         ]),
+    dict(name="blackeye", a="s07-blackeye.png", b=None, motion="hold", move=0.0,
+         dur=5.0, flicker=0.008, framings=[
+             (0.50, 1.00, 1.05, 0, 0, 2),
+             (0.50, 1.30, 1.40, 0, -100, 2),
+         ]),
+    dict(name="awake", a="s07-blackeye.png", b="s08-awake.png", motion="cut", move=0.0,
+         dur=8.0, flicker=0.010, framings=[
+             (0.42, 1.20, 1.30, 0, -100, 0),
+             (0.25, 1.55, 1.60, 0, -150, 7),
+             (0.33, 1.10, 1.20, 0, 0, 3),
+         ]),
+    dict(name="offer", a="s09-offer.png", b="s09b-offer.png", motion="morph", move=0.45,
+         dur=9.0, flicker=0.012, framings=[
+             (0.36, 1.00, 1.06, 150, 0, 0),
+             (0.18, 1.45, 1.50, 300, 250, 0),
+             (0.22, 1.30, 1.35, 250, -250, 0),
+             (0.24, 1.10, 1.20, 100, 0, 0),
+         ]),
+    dict(name="poison", a="s10-poison.png", b=None, motion="hold", move=0.0,
+         dur=6.0, flicker=0.014, framings=[
+             (0.45, 1.20, 1.35, 0, 0, 0),
+             (0.55, 1.60, 1.75, 50, 50, 0),
+         ]),
+    dict(name="coldlook", a="s11-coldlook.png", b="s11b-coldlook.png", motion="morph", move=0.35,
+         dur=8.0, flicker=0.010, framings=[
+             (0.365, 1.15, 1.20, 0, -150, 0),
+             (0.150, 1.50, 1.55, 0, -200, 0),
+             (0.240, 1.00, 1.08, 0, 0, 0),
+             (0.245, 1.35, 1.45, 0, -180, 0),
+         ]),
+    dict(name="smile", a="s12-smile.png", b="s12b-smile.png", motion="morph", move=0.30,
+         dur=6.0, flicker=0.008, framings=[
+             (0.357, 1.20, 1.25, 0, 0, 0),
+             (0.150, 1.60, 1.65, 0, 100, 0),
+             (0.493, 1.30, 1.40, 0, 0, 0),
+         ]),
+    dict(name="push", a="s13-push.png", b="s13b-push.png", motion="morph", move=0.50,
+         dur=10.0, flicker=0.010, framings=[
+             (0.357, 1.00, 1.06, -100, 0, 0),
+             (0.150, 1.50, 1.55, -50, 400, 4),
+             (0.200, 1.35, 1.40, -250, -150, 0),
+             (0.293, 1.10, 1.20, 0, 0, 0),
+         ]),
+    dict(name="shock", a="s14-shock.png", b="s14b-shock.png", motion="cut", move=0.0,
+         dur=6.0, flicker=0.010, framings=[
+             (0.42, 1.20, 1.25, -80, -100, 0),
+             (0.25, 1.60, 1.65, -60, -150, 6),
+             (0.33, 1.05, 1.15, 0, 0, 2),
+         ]),
+    dict(name="stare", a="s15-stare.png", b="s15b-stare.png", motion="blink", move=0.0,
+         dur=6.0, flicker=0.010, framings=[
+             (0.40, 1.15, 1.20, 0, -100, 0),
+             (0.25, 1.50, 1.55, 0, -150, 0),
+             (0.35, 1.05, 1.15, 0, 0, 0),
+         ]),
 ]
+
+# only time and consciousness shifts dissolve; everything else cuts
+DISSOLVE_AFTER = {
+    "disdain": ("fade", 0.5),
+    "shadow": ("fade", 0.4),
+    "blackeye": ("fadewhite", 0.25),
+    "stare": ("fade", 0.4),
+}
+END_DUR = 6.0
 
 LINES = [
     (0.4, "n1.wav", "前世，我跪着死在侯府寿宴上。"),
@@ -71,7 +163,7 @@ TTS = [
 
 
 def run(cmd: list[str]) -> None:
-    print("+", " ".join(str(c) for c in cmd[:6]), "...", flush=True)
+    print("+", " ".join(str(c) for c in cmd[:5]), "...", flush=True)
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
@@ -83,7 +175,8 @@ def wav_duration(path: Path) -> float:
 async def gen_tts() -> None:
     """Synthesize any missing dialogue stem; committed stems are reused as-is."""
     AUDIO.mkdir(parents=True, exist_ok=True)
-    missing = [t for t in TTS if not (AUDIO / t[0]).exists() or (AUDIO / t[0]).stat().st_size <= 1000]
+    missing = [t for t in TTS
+               if not (AUDIO / t[0]).exists() or (AUDIO / t[0]).stat().st_size <= 1000]
     if not missing:
         return
     import edge_tts
@@ -96,52 +189,54 @@ async def gen_tts() -> None:
         tmp.unlink(missing_ok=True)
 
 
-def morph_clip(a: Path, b: Path, move_dur: float, out: Path) -> float:
+def still_clip(img: Path, dur: float, out: Path) -> None:
+    run([
+        "ffmpeg", "-y", "-loop", "1", "-i", str(img),
+        "-t", f"{dur:.3f}", "-r", str(FPS),
+        "-vf", f"scale={SRC_W}:{SRC_H},format=yuv420p",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", str(out),
+    ])
+
+
+def morph_clip(a: Path, b: Path, move: float, out: Path) -> float:
     """Motion-compensated move from A to B, held briefly at both ends.
 
     A 4-frame A,A,B,B source puts the travel in the middle third, so the clip
     runs three times the requested move. Frame averaging adds motion blur, which
     both reads as speed and hides interpolation smear.
     """
-    total = move_dur * 3
+    total = move * 3
     seq = WORK / f"seq_{out.stem}"
     if seq.exists():
         shutil.rmtree(seq)
     seq.mkdir(parents=True)
     for idx, src in enumerate([a, a, b, b], start=1):
         shutil.copy(src, seq / f"f_{idx:02d}.png")
-    run(
-        [
-            "ffmpeg", "-y",
-            "-framerate", f"{4 / total:.4f}",
-            "-start_number", "1",
-            "-i", str(seq / "f_%02d.png"),
-            "-vf",
-            "minterpolate=fps=60:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1,"
-            "tmix=frames=3:weights='1 1 1',fps=30,"
-            f"scale={SRC_W}:{SRC_H},format=yuv420p",
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "16",
-            str(out),
-        ]
-    )
+    run([
+        "ffmpeg", "-y",
+        "-framerate", f"{4 / total:.4f}", "-start_number", "1",
+        "-i", str(seq / "f_%02d.png"),
+        "-vf",
+        "minterpolate=fps=60:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1,"
+        "tmix=frames=3:weights='1 1 1',fps=30,"
+        f"scale={SRC_W}:{SRC_H},format=yuv420p",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", str(out),
+    ])
     return total
 
 
-def still_clip(img: Path, dur: float, out: Path) -> None:
-    run(
-        [
-            "ffmpeg", "-y", "-loop", "1", "-i", str(img),
-            "-t", f"{dur:.3f}", "-r", str(FPS),
-            "-vf", f"scale={SRC_W}:{SRC_H},format=yuv420p",
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "16",
-            str(out),
-        ]
-    )
+def concat(parts: list[Path], out: Path) -> None:
+    listing = out.with_suffix(".txt")
+    listing.write_text("".join(f"file '{p}'\n" for p in parts), encoding="utf-8")
+    run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(listing),
+         "-c", "copy", str(out)])
 
 
-def build_beat(name: str, idx: int, a: Path, b: Path | None, motion: str,
-               move_dur: float, dur: float, out: Path) -> None:
-    """Assemble one beat's raw footage at source resolution."""
+def build_plate(shot: dict, idx: int, dur: float, out: Path) -> None:
+    """Render the beat's continuous action at source resolution."""
+    a = FRAMES / shot["a"]
+    b = FRAMES / shot["b"] if shot["b"] else None
+    motion = shot["motion"]
     if motion == "hold" or b is None:
         still_clip(a, dur, out)
         return
@@ -154,7 +249,7 @@ def build_beat(name: str, idx: int, a: Path, b: Path | None, motion: str,
         parts.append(path)
 
     if motion == "blink":
-        # close-open-close-open, hard cuts, spaced unevenly so it reads as alive
+        # close-open-close-open on hard cuts, spaced unevenly so it reads alive
         rest = dur - 2 * BLINK
         still(a, rest * 0.45, "a1")
         still(b, BLINK, "b1")
@@ -165,8 +260,8 @@ def build_beat(name: str, idx: int, a: Path, b: Path | None, motion: str,
         still(a, dur * 0.42, "a1")
         still(b, dur * 0.58, "b1")
     else:
-        morph = WORK / f"morph_{idx:02d}_{name}.mp4"
-        span = morph_clip(a, b, move_dur, morph)
+        morph = WORK / f"morph_{idx:02d}_{shot['name']}.mp4"
+        span = morph_clip(a, b, shot["move"], morph)
         lead = max((dur - span) * 0.42, 0.2)
         still(a, lead, "a1")
         parts.append(morph)
@@ -175,120 +270,104 @@ def build_beat(name: str, idx: int, a: Path, b: Path | None, motion: str,
     concat(parts, out)
 
 
-def concat(parts: list[Path], out: Path) -> None:
-    listing = out.with_suffix(".txt")
-    listing.write_text("".join(f"file '{p}'\n" for p in parts), encoding="utf-8")
-    run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(listing), "-c", "copy", str(out)])
-
-
-def finish_shot(raw: Path, dur: float, zoom: float, px: int, py: int,
-                shake: int, flicker: float, out: Path) -> None:
-    """Frame the raw beat vertically, add drift, handheld sway, candle flicker, grain."""
+def render_framing(plate: Path, start: float, dur: float, z0: float, z1: float,
+                   pan_x: int, pan_y: int, shake: int, flicker: float,
+                   out: Path) -> None:
+    """Cut one camera setup out of the plate: reframe, drift, sway, flicker, grain."""
     frames = max(int(dur * FPS), 1)
-    big_w, big_h = int(W * 1.5), int(H * 1.5)
-    zx = f"iw/2-(iw/zoom/2)+{px}*on/{frames}"
-    zy = f"ih/2-(ih/zoom/2)+{py}*on/{frames}"
-    if shake:
-        zx += f"+{shake}*sin(on/4.5)"
-        zy += f"+{shake}*sin(on/6.1)"
+    z0, z1 = min(z0, MAX_ZOOM), min(z1, MAX_ZOOM)
+    crop_x = f"max(0,min(in_w-{BIG_W},(in_w-{BIG_W})/2+{int(pan_x * 1.5)}))"
+    sway_x = f"+{shake}*sin(on/4.5)" if shake else ""
+    sway_y = f"+{shake}*sin(on/6.1)" if shake else ""
+    zoom = f"{z0}+({z1}-{z0})*on/{frames}"
+    zx = f"max(0,min(iw-iw/zoom,iw/2-(iw/zoom/2){sway_x}))"
+    zy = f"max(0,min(ih-ih/zoom,ih/2-(ih/zoom/2)+{int(pan_y * 1.5)}{sway_y}))"
     vf = (
+        f"trim=start={start:.3f}:duration={dur:.3f},setpts=PTS-STARTPTS,"
         f"tpad=stop_mode=clone:stop_duration=6,fps={FPS},"
-        f"scale={big_w}:{big_h}:force_original_aspect_ratio=increase,"
-        f"crop={big_w}:{big_h},"
-        f"zoompan=z='min(1+({zoom}-1)*on/{frames},{zoom})':x='{zx}':y='{zy}':"
-        f"d=1:s={W}x{H}:fps={FPS},"
-        f"eq=brightness='{flicker}*sin(2*PI*t*2.7)+{flicker * 0.6}*sin(2*PI*t*5.3)':eval=frame,"
-        f"noise=alls=4:allf=t,format=yuv420p"
+        f"scale=-2:{BIG_H},crop={BIG_W}:{BIG_H}:x='{crop_x}':y=0,"
+        f"zoompan=z='{zoom}':x='{zx}':y='{zy}':d=1:s={W}x{H}:fps={FPS},"
+        "unsharp=5:5:0.7:5:5:0.0,"
+        f"eq=brightness='{flicker}*sin(2*PI*t*2.7)+{flicker * 0.6}*sin(2*PI*t*5.3)':"
+        "eval=frame,"
+        "noise=alls=4:allf=t,format=yuv420p"
     )
-    run(
-        [
-            "ffmpeg", "-y", "-i", str(raw), "-vf", vf, "-t", f"{dur:.3f}",
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", str(out),
-        ]
-    )
+    run([
+        "ffmpeg", "-y", "-i", str(plate), "-vf", vf, "-t", f"{dur:.3f}",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", str(out),
+    ])
 
 
 def end_card(dur: float, out: Path) -> None:
-    run(
-        [
-            "ffmpeg", "-y", "-f", "lavfi",
-            "-i", f"color=c=black:s={W}x{H}:r={FPS}:d={dur}",
-            "-vf",
-            f"drawtext=fontfile={FONT}:text='今生，换你们跪。':"
-            f"fontsize=64:fontcolor=white:x=(w-text_w)/2:y=(h-text_h)/2,"
-            f"noise=alls=3:allf=t,format=yuv420p",
-            "-t", f"{dur:.3f}", "-r", str(FPS),
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", str(out),
-        ]
-    )
+    run([
+        "ffmpeg", "-y", "-f", "lavfi",
+        "-i", f"color=c=black:s={W}x{H}:r={FPS}:d={dur}",
+        "-vf",
+        f"drawtext=fontfile={FONT}:text='今生，换你们跪。':"
+        "fontsize=64:fontcolor=white:x=(w-text_w)/2:y=(h-text_h)/2,"
+        "noise=alls=3:allf=t,format=yuv420p",
+        "-t", f"{dur:.3f}", "-r", str(FPS),
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", str(out),
+    ])
 
 
-def xfade_chain(clips: list[Path], durations: list[float], out: Path) -> None:
-    """Dissolve between beats; the rebirth beat gets a white flash instead."""
+def xfade_runs(runs: list[Path], durations: list[float],
+               transitions: list[tuple[str, float]], out: Path) -> None:
     inputs: list[str] = []
-    for clip in clips:
+    for clip in runs:
         inputs += ["-i", str(clip)]
     filters: list[str] = []
     label = "0:v"
     offset = 0.0
-    for i in range(1, len(clips)):
-        offset += durations[i - 1] - XFADE
-        transition = "fadewhite" if clips[i].stem.endswith("awake") else "fade"
+    for i in range(1, len(runs)):
+        kind, span = transitions[i - 1]
+        offset += durations[i - 1] - span
         new_label = f"x{i}"
         filters.append(
-            f"[{label}][{i}:v]xfade=transition={transition}:"
-            f"duration={XFADE}:offset={offset:.3f}[{new_label}]"
+            f"[{label}][{i}:v]xfade=transition={kind}:"
+            f"duration={span}:offset={offset:.3f}[{new_label}]"
         )
         label = new_label
-    run(
-        [
-            "ffmpeg", "-y", *inputs,
-            "-filter_complex", ";".join(filters),
-            "-map", f"[{label}]",
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
-            "-pix_fmt", "yuv420p", str(out),
-        ]
-    )
+    run([
+        "ffmpeg", "-y", *inputs, "-filter_complex", ";".join(filters),
+        "-map", f"[{label}]",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+        "-pix_fmt", "yuv420p", str(out),
+    ])
 
 
 def make_bgm(total: float, path: Path) -> None:
-    run(
-        [
-            "ffmpeg", "-y",
-            "-f", "lavfi", "-i", f"sine=frequency=55:duration={total}",
-            "-f", "lavfi", "-i", f"sine=frequency=110:duration={total}",
-            "-f", "lavfi", "-i", f"sine=frequency=220:duration={total}",
-            "-f", "lavfi", "-i", f"anoisesrc=color=pink:amplitude=0.015:duration={total}",
-            "-filter_complex",
-            "[0:a]volume=0.12[a0];[1:a]volume=0.05[a1];[2:a]volume=0.02[a2];"
-            "[3:a]highpass=f=200,volume=0.35[a3];"
-            "[a0][a1][a2][a3]amix=inputs=4:duration=longest:dropout_transition=0,"
-            f"afade=t=in:st=0:d=1.5,afade=t=out:st={max(total - 2.2, 0):.2f}:d=2,"
-            "volume='if(lt(t,45),0.7,if(lt(t,82),0.9,if(lt(t,86),0.35,1.1)))'",
-            "-ac", "2", "-ar", "48000", str(path),
-        ]
-    )
+    run([
+        "ffmpeg", "-y",
+        "-f", "lavfi", "-i", f"sine=frequency=55:duration={total}",
+        "-f", "lavfi", "-i", f"sine=frequency=110:duration={total}",
+        "-f", "lavfi", "-i", f"sine=frequency=220:duration={total}",
+        "-f", "lavfi", "-i", f"anoisesrc=color=pink:amplitude=0.015:duration={total}",
+        "-filter_complex",
+        "[0:a]volume=0.12[a0];[1:a]volume=0.05[a1];[2:a]volume=0.02[a2];"
+        "[3:a]highpass=f=200,volume=0.35[a3];"
+        "[a0][a1][a2][a3]amix=inputs=4:duration=longest:dropout_transition=0,"
+        f"afade=t=in:st=0:d=1.5,afade=t=out:st={max(total - 2.2, 0):.2f}:d=2,"
+        "volume='if(lt(t,45),0.7,if(lt(t,82),0.9,if(lt(t,86),0.35,1.1)))'",
+        "-ac", "2", "-ar", "48000", str(path),
+    ])
     strike = WORK / "strike.wav"
-    run(
-        [
-            "ffmpeg", "-y",
-            "-f", "lavfi", "-i", "sine=frequency=180:duration=0.35",
-            "-f", "lavfi", "-i", "anoisesrc=color=brown:amplitude=0.4:duration=0.25",
-            "-filter_complex",
-            "[0]volume=0.5[a];[1]volume=0.7[b];[a][b]amix=inputs=2,afade=t=out:st=0.05:d=0.3",
-            str(strike),
-        ]
-    )
+    run([
+        "ffmpeg", "-y",
+        "-f", "lavfi", "-i", "sine=frequency=180:duration=0.35",
+        "-f", "lavfi", "-i", "anoisesrc=color=brown:amplitude=0.4:duration=0.25",
+        "-filter_complex",
+        "[0]volume=0.5[a];[1]volume=0.7[b];[a][b]amix=inputs=2,afade=t=out:st=0.05:d=0.3",
+        str(strike),
+    ])
     mixed = path.with_name("bgm_mixed.wav")
-    run(
-        [
-            "ffmpeg", "-y", "-i", str(path), "-i", str(strike),
-            "-filter_complex",
-            "[1]adelay=86200|86200,volume=1.4[s];"
-            "[0][s]amix=inputs=2:duration=first:dropout_transition=0",
-            str(mixed),
-        ]
-    )
+    run([
+        "ffmpeg", "-y", "-i", str(path), "-i", str(strike),
+        "-filter_complex",
+        "[1]adelay=86200|86200,volume=1.4[s];"
+        "[0][s]amix=inputs=2:duration=first:dropout_transition=0",
+        str(mixed),
+    ])
     mixed.replace(path)
 
 
@@ -309,12 +388,10 @@ def mix_audio(total: float, out: Path) -> None:
         f"{''.join(labels)}amix=inputs={len(labels)}:duration=first:"
         "dropout_transition=0:normalize=0[aout]"
     )
-    run(
-        [
-            "ffmpeg", "-y", *inputs, "-filter_complex", ";".join(filters),
-            "-map", "[aout]", "-t", f"{total:.3f}", "-ac", "2", "-ar", "48000", str(out),
-        ]
-    )
+    run([
+        "ffmpeg", "-y", *inputs, "-filter_complex", ";".join(filters),
+        "-map", "[aout]", "-t", f"{total:.3f}", "-ac", "2", "-ar", "48000", str(out),
+    ])
 
 
 def fmt(t: float) -> str:
@@ -343,30 +420,25 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     events.append("Dialogue: 0,0:01:44.40,0:01:48.50,Default,,0,0,0,,今生，换你们跪。")
     ass = WORK / "subs.ass"
     ass.write_text(header + "\n".join(events) + "\n", encoding="utf-8")
-    run(
-        [
-            "ffmpeg", "-y", "-i", str(video),
-            "-vf", f"ass={ass}:fontsdir=/usr/share/fonts",
-            "-c:a", "copy", "-c:v", "libx264", "-preset", "medium", "-crf", "23",
-            "-maxrate", "6M", "-bufsize", "12M", "-profile:v", "high", "-level", "4.1",
-            "-movflags", "+faststart",
-            str(out),
-        ]
-    )
+    run([
+        "ffmpeg", "-y", "-i", str(video),
+        "-vf", f"ass={ass}:fontsdir=/usr/share/fonts",
+        "-c:a", "copy", "-c:v", "libx264", "-preset", "medium", "-crf", "23",
+        "-maxrate", "6M", "-bufsize", "12M", "-profile:v", "high", "-level", "4.1",
+        "-movflags", "+faststart", str(out),
+    ])
 
 
 def build_cover(out: Path) -> None:
-    run(
-        [
-            "ffmpeg", "-y", "-i", str(FRAMES / "s13-push.png"),
-            "-vf",
-            f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
-            f"drawbox=x=0:y=ih-280:w=iw:h=280:color=black@0.55:t=fill,"
-            f"drawtext=fontfile={FONT}:text='重生后，她把毒酒推了回去':"
-            f"fontsize=52:fontcolor=white:x=(w-text_w)/2:y=h-180",
-            "-frames:v", "1", "-update", "1", str(out),
-        ]
-    )
+    run([
+        "ffmpeg", "-y", "-i", str(FRAMES / "s13-push.png"),
+        "-vf",
+        f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
+        "drawbox=x=0:y=ih-280:w=iw:h=280:color=black@0.55:t=fill,"
+        f"drawtext=fontfile={FONT}:text='重生后，她把毒酒推了回去':"
+        "fontsize=52:fontcolor=white:x=(w-text_w)/2:y=h-180",
+        "-frames:v", "1", "-update", "1", str(out),
+    ])
 
 
 def main() -> None:
@@ -374,40 +446,67 @@ def main() -> None:
     FINAL.mkdir(parents=True, exist_ok=True)
     asyncio.run(gen_tts())
 
-    clips: list[Path] = []
+    # Group beats into runs of hard cuts; runs are joined by the few dissolves.
+    runs: list[list[Path]] = [[]]
+    run_transitions: list[tuple[str, float]] = []
+    pending_extra = 0.0
+    cut_count = 0
+
+    for idx, shot in enumerate(SHOTS):
+        # a run that follows a dissolve absorbs the overlap it will lose
+        dur = shot["dur"] + pending_extra
+        pending_extra = 0.0
+        plate = WORK / f"plate_{idx:02d}_{shot['name']}.mp4"
+        build_plate(shot, idx, dur, plate)
+
+        cursor = 0.0
+        shares = shot["framings"]
+        for j, (share, z0, z1, px, py, shake) in enumerate(shares):
+            seg_dur = dur * share if j < len(shares) - 1 else dur - cursor
+            seg = WORK / f"seg_{idx:02d}_{j}_{shot['name']}.mp4"
+            render_framing(plate, cursor, seg_dur, z0, z1, px, py, shake,
+                           shot["flicker"], seg)
+            runs[-1].append(seg)
+            cursor += seg_dur
+            cut_count += 1
+
+        if shot["name"] in DISSOLVE_AFTER:
+            kind, span = DISSOLVE_AFTER[shot["name"]]
+            run_transitions.append((kind, span))
+            pending_extra = span
+            runs.append([])
+
+    end = WORK / "seg_99_end.mp4"
+    end_card(END_DUR + pending_extra, end)
+    runs[-1].append(end)
+
+    joined: list[Path] = []
     durations: list[float] = []
-    for idx, (name, a, b, motion, move_dur, dur, zoom, px, py, shake, flicker) in enumerate(SHOTS):
-        # every clip after the first absorbs the dissolve overlap
-        clip_dur = dur + (XFADE if idx else 0.0)
-        raw = WORK / f"raw_{idx:02d}_{name}.mp4"
-        build_beat(name, idx, FRAMES / a, FRAMES / b if b else None,
-                   motion, move_dur, clip_dur, raw)
+    for i, segs in enumerate(runs):
+        target = WORK / f"run_{i:02d}.mp4"
+        if len(segs) == 1:
+            shutil.copy(segs[0], target)
+        else:
+            concat(segs, target)
+        joined.append(target)
+        durations.append(float(subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=nw=1:nk=1", str(target)],
+            capture_output=True, text=True, check=True).stdout.strip()))
 
-        out = WORK / f"clip_{idx:02d}_{name}.mp4"
-        finish_shot(raw, clip_dur, zoom, px, py, shake, flicker, out)
-        clips.append(out)
-        durations.append(clip_dur)
-
-    end = WORK / "clip_99_end.mp4"
-    end_card(6.0 + XFADE, end)
-    clips.append(end)
-    durations.append(6.0 + XFADE)
-
-    total = sum(shot[5] for shot in SHOTS) + 6.0
+    total = sum(s["dur"] for s in SHOTS) + END_DUR
     silent = WORK / "video_silent.mp4"
-    xfade_chain(clips, durations, silent)
+    xfade_runs(joined, durations, run_transitions, silent)
 
     make_bgm(total, WORK / "bgm.wav")
     mix_audio(total, WORK / "mix.wav")
 
     with_audio = WORK / "video_audio.mp4"
-    run(
-        [
-            "ffmpeg", "-y", "-i", str(silent), "-i", str(WORK / "mix.wav"),
-            "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "aac",
-            "-b:a", "192k", "-t", f"{total:.3f}", str(with_audio),
-        ]
-    )
+    run([
+        "ffmpeg", "-y", "-i", str(silent), "-i", str(WORK / "mix.wav"),
+        "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "aac",
+        "-b:a", "192k", "-t", f"{total:.3f}", str(with_audio),
+    ])
 
     out_mp4 = FINAL / "ep01-v3.mp4"
     burn_subs(with_audio, out_mp4)
@@ -415,7 +514,7 @@ def main() -> None:
     build_cover(cover)
     shutil.copy(out_mp4, FINAL / "ep01.mp4")
     shutil.copy(cover, FINAL / "cover.png")
-    print(f"DONE total={total}s -> {out_mp4}")
+    print(f"DONE {total}s, {cut_count + 1} cuts -> {out_mp4}")
 
 
 if __name__ == "__main__":
