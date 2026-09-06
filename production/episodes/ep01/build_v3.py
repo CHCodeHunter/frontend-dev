@@ -34,37 +34,48 @@ MAX_ZOOM = 1.5
 
 FONT = "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"
 
-# framing: (share of beat, zoom start, zoom end, pan x, pan y, shake)
-# pan values are in output pixels; positive x looks right, positive y looks down
+# framing: (share of beat, zoom start, zoom end, pan x, pan y, shake[, cutaway])
+# pan values are in output pixels; positive x looks right, positive y looks down.
+# A cutaway renders that still instead of the beat's own plate, which is how the
+# edit gets genuinely different angles rather than two crops of one drawing.
 SHOTS: list[dict] = [
+    # cold open: the death lands before the viewer can scroll past
+    dict(name="hook", a="s03b-collapse.png", b=None, motion="hold", move=0.0,
+         dur=1.6, flicker=0.010, framings=[
+             (0.55, 1.35, 1.42, -300, -200, 6),
+             (0.45, 1.30, 1.38, -150, 300, 4),
+         ]),
     dict(name="candle", a="s01-candle.png", b=None, motion="hold", move=0.0,
-         dur=4.0, flicker=0.020, framings=[
-             (0.55, 1.00, 1.06, -150, 0, 0),
-             (0.45, 1.50, 1.60, -300, -200, 0),
+         dur=1.4, flicker=0.020, framings=[
+             (1.00, 1.30, 1.42, -280, -180, 0),
          ]),
     dict(name="drink", a="s02-drink.png", b="s02b-drink.png", motion="morph", move=0.45,
          dur=5.0, flicker=0.014, framings=[
-             (0.30, 1.00, 1.05, 100, 0, 0),
-             (0.32, 1.35, 1.45, 250, -250, 0),
-             (0.38, 1.15, 1.25, 200, -150, 0),
+             (0.28, 1.00, 1.05, 100, 0, 0),
+             (0.14, 1.35, 1.45, 0, 0, 0, "s10-poison.png"),
+             (0.28, 1.35, 1.45, 250, -250, 0),
+             (0.30, 1.15, 1.25, 200, -150, 0),
          ]),
     dict(name="collapse", a="s03-collapse.png", b="s03b-collapse.png", motion="cut", move=0.0,
-         dur=7.0, flicker=0.012, framings=[
+         dur=6.0, flicker=0.012, framings=[
              (0.42, 1.00, 1.06, -200, 0, 0),
-             (0.28, 1.50, 1.55, -320, -250, 5),
-             (0.30, 1.15, 1.25, -150, 200, 3),
+             (0.26, 1.45, 1.50, -320, -250, 5),
+             (0.14, 1.10, 1.16, 0, -150, 0, "s05-disdain.png"),
+             (0.18, 1.15, 1.25, -150, 200, 3),
          ]),
     dict(name="fakecry", a="s04-fakecry.png", b="s04b-fakecry.png", motion="blink", move=0.0,
          dur=6.0, flicker=0.010, framings=[
-             (0.45, 1.30, 1.35, -100, -150, 0),
-             (0.25, 1.00, 1.05, 0, 0, 0),
-             (0.30, 1.50, 1.60, -80, -200, 0),
+             (0.40, 1.30, 1.35, -100, -150, 0),
+             (0.20, 1.20, 1.28, -280, 250, 0, "s03b-collapse.png"),
+             (0.40, 1.00, 1.06, 60, 0, 0),
          ]),
     dict(name="disdain", a="s05-disdain.png", b="s05b-disdain.png", motion="morph", move=0.40,
-         dur=8.0, flicker=0.012, framings=[
-             (0.36, 1.00, 1.06, 0, 0, 0),
-             (0.20, 1.35, 1.40, -100, -250, 0),
-             (0.44, 1.10, 1.20, -200, 0, 0),
+         dur=10.0, flicker=0.012, framings=[
+             (0.30, 1.00, 1.06, 0, 0, 0),
+             (0.16, 1.35, 1.40, -60, -250, 0),
+             (0.18, 1.28, 1.34, -300, 200, 0, "s03-collapse.png"),
+             (0.16, 1.42, 1.48, -40, -220, 0),
+             (0.20, 1.10, 1.18, -60, 0, 0),
          ]),
     dict(name="shadow", a="s06-shadow.png", b=None, motion="hold", move=0.0,
          dur=10.0, flicker=0.016, framings=[
@@ -85,10 +96,11 @@ SHOTS: list[dict] = [
          ]),
     dict(name="offer", a="s09-offer.png", b="s09b-offer.png", motion="morph", move=0.45,
          dur=9.0, flicker=0.012, framings=[
-             (0.36, 1.00, 1.06, 150, 0, 0),
+             (0.30, 1.00, 1.06, 150, 0, 0),
              (0.18, 1.45, 1.50, 300, 250, 0),
-             (0.22, 1.30, 1.35, 250, -250, 0),
-             (0.24, 1.10, 1.20, 100, 0, 0),
+             (0.16, 1.35, 1.42, 0, -180, 0, "s11-coldlook.png"),
+             (0.18, 1.30, 1.35, 250, -250, 0),
+             (0.18, 1.10, 1.20, 100, 0, 0),
          ]),
     dict(name="poison", a="s10-poison.png", b=None, motion="hold", move=0.0,
          dur=6.0, flicker=0.014, framings=[
@@ -110,10 +122,11 @@ SHOTS: list[dict] = [
          ]),
     dict(name="push", a="s13-push.png", b="s13b-push.png", motion="morph", move=0.50,
          dur=10.0, flicker=0.010, framings=[
-             (0.357, 1.00, 1.06, -100, 0, 0),
+             (0.300, 1.00, 1.06, -100, 0, 0),
              (0.150, 1.50, 1.55, -50, 400, 4),
-             (0.200, 1.35, 1.40, -250, -150, 0),
-             (0.293, 1.10, 1.20, 0, 0, 0),
+             (0.150, 1.35, 1.42, -80, -160, 0, "s14-shock.png"),
+             (0.170, 1.35, 1.40, -250, -150, 0),
+             (0.230, 1.10, 1.20, 0, 0, 0),
          ]),
     dict(name="shock", a="s14-shock.png", b="s14b-shock.png", motion="cut", move=0.0,
          dur=6.0, flicker=0.010, framings=[
@@ -412,7 +425,8 @@ Style: Default,Sans,54,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,1
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     events = [
-        "Dialogue: 0,0:00:00.20,0:00:01.80,Default,,0,0,0,,{\\fs40}侯府嫡女：今生换你们跪"
+        "Dialogue: 0,0:00:00.20,0:00:02.60,Default,,0,0,0,,"
+        "{\\an8\\fs50\\bord4}侯府嫡女：今生换你们跪"
     ]
     for start, wav, text in LINES:
         end = start + wav_duration(AUDIO / wav) + 0.15
@@ -461,11 +475,19 @@ def main() -> None:
 
         cursor = 0.0
         shares = shot["framings"]
-        for j, (share, z0, z1, px, py, shake) in enumerate(shares):
+        for j, framing in enumerate(shares):
+            share, z0, z1, px, py, shake = framing[:6]
+            cutaway = framing[6] if len(framing) > 6 else None
             seg_dur = dur * share if j < len(shares) - 1 else dur - cursor
             seg = WORK / f"seg_{idx:02d}_{j}_{shot['name']}.mp4"
-            render_framing(plate, cursor, seg_dur, z0, z1, px, py, shake,
-                           shot["flicker"], seg)
+            if cutaway:
+                source = WORK / f"cut_{idx:02d}_{j}.mp4"
+                still_clip(FRAMES / cutaway, seg_dur, source)
+                render_framing(source, 0.0, seg_dur, z0, z1, px, py, shake,
+                               shot["flicker"], seg)
+            else:
+                render_framing(plate, cursor, seg_dur, z0, z1, px, py, shake,
+                               shot["flicker"], seg)
             runs[-1].append(seg)
             cursor += seg_dur
             cut_count += 1
